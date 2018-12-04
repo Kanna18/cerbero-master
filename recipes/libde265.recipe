@@ -1,0 +1,64 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+from cerbero.tools.libtool import LibtoolLibrary
+
+
+class Recipe(recipe.Recipe):
+    version = '20161218-2245'
+    name = 'libde265'
+    licenses = [License.GPL]
+    stype = SourceType.GIT
+    remotes = {'origin': 'https://github.com/strukturag/libde265.git'}
+
+
+    files_libs = ['libde265']
+    files_bins = ['de265']
+    files_devel = ['lib/pkgconfig/de265.pc', 'include/de265.h',
+                   'include/de265_config.h']
+
+    def prepare(self):
+        # clang x86-32 fails at generating proper asm PIC code
+        # See bug https://bugzilla.gnome.org/show_bug.cgi?id=727079
+        enable_asm = True
+        AS = ['yasm']
+
+        arch = self.config.target_arch
+        if self.config.target_arch == Architecture.X86:
+            arch = 'i686'
+        if self.config.target_platform == Platform.DARWIN:
+            if self.config.target_arch == Architecture.X86:
+                AS = ['yasm', '-O2', '-f', 'macho', '-DPREFIX']
+                enable_asm = False
+        if self.config.target_platform == Platform.WINDOWS:
+            self.configure_options += ' --enable-win32thread'
+        if self.config.target_arch == Architecture.ARM:
+            # FIXME : Is disabling asm on ARM (< v7) still needed ?
+            enable_asm = False
+        elif Architecture.is_arm(self.config.target_arch):
+            if 'CC' in os.environ:
+                AS = [os.environ['CC']]
+            else:
+                AS = []
+        if self.config.target_platform == Platform.IOS:
+            if Architecture.is_arm(self.config.target_arch):
+                # x264 ships its own gas-preprocessor.pl
+                AS = ['tools/' + os.environ['GAS']]
+                # self.patches = ['x264/0001-Disable-fembed-bitcode-incompatible-argument.patch']
+            elif self.config.target_arch == Architecture.X86:
+                enable_asm = False
+
+        if self.config.target_platform == Platform.ANDROID:
+            # Don't build the cli on Android, it fails with NDK 16
+            self.configure_options += ' --disable-cli'
+            self.files_bins.remove('de265')
+            if self.config.target_arch in [Architecture.X86_64]:
+                # Fails linking into an android application
+                enable_asm = False
+
+        self.set_env('AS', *AS)
+        if enable_asm is False:
+            self.configure_options += ' --disable-asm '
+
+    def post_install(self):
+        libtool_la = LibtoolLibrary('de265', 148, None, None, self.config.libdir,
+                self.config.target_platform)
+        libtool_la.save()
