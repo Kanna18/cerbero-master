@@ -4,3 +4,4 @@ target_platform=Platform.IOS
 target_arch=Architecture.UNIVERSAL
 target_distro=Distro.IOS
 universal_archs=[Architecture.ARMv7, Architecture.X86, Architecture.ARM64, Architecture.X86_64]
+allow_parallel_build = True
