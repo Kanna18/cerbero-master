@@ -1,0 +1,33 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+class Recipe(recipe.Recipe):
+    name = 'libnice'
+    version = '0.1.14'
+    stype = SourceType.TARBALL
+    url = 'https://nice.freedesktop.org/releases/%(name)s-%(version)s.tar.gz'
+    tarball_checksum = 'be120ba95d4490436f0da077ffa8f767bf727b82decf2bf499e39becc027809c'
+    licenses = [License.LGPLv2_1Plus, License.MPLv1_1]
+    configure_options = '--enable-static --enable-static-plugins --enable-shared \
+            --with-gstreamer --without-gstreamer-0.10 \
+            --enable-compile-warnings=maximum --disable-gtk-doc'
+    deps = ['glib', 'gstreamer-1.0']
+    autoreconf = True
+    patches = [
+        "libnice/0001-Fix-build-with-android-NDK-r16.patch",
+        "libnice/0001-nicesrc-spin-the-agent-mainloop-in-a-separate-thread.patch",
+        "libnice/0001-agent-Redefine-socket-error-messages-for-windows.patch",
+        "libnice/0001-stun-Also-rename-windows-specific-function.patch"
+    ]
+
+    files_bins = ['stunbdc', 'stund']
+    files_libs = ['libnice']
+    files_devel = [
+        'include/nice',
+        'include/stun',
+        'lib/pkgconfig/nice.pc',
+    ]
+    files_plugins_net = ['lib/gstreamer-1.0/libgstnice%(mext)s']
+    files_plugins_net_devel = [
+        'lib/gstreamer-1.0/libgstnice.a', 'lib/gstreamer-1.0/libgstnice.la',
+    ]
+    # FIXME - if_arp.h? (iOS)

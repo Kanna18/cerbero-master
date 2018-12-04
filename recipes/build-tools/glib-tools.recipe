@@ -1,0 +1,38 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+class Recipe(recipe.Recipe):
+    name = 'glib-tools'
+    version = '2.56.1'
+    stype = SourceType.TARBALL
+    url = 'gnome://glib/%(maj_ver)s/glib-%(version)s.tar.xz'
+    tarball_dirname = 'glib-%(version)s'
+    tarball_checksum = '40ef3f44f2c651c7a31aedee44259809b6f03d3d20be44545cd7d177221c0b8d'
+    licenses = [License.LGPLv2Plus]
+    btype = BuildType.MESON
+    meson_options = {'gtk_doc': 'false', 'internal_pcre': 'true', 'libmount': 'false',
+                     'dtrace': 'false', 'iconv': 'libc', 'selinux' : 'false'}
+    deps = ['libffi', 'zlib']
+    patches = ['../glib/glib-2.57-meson-backported-fixes.patch',
+               '../glib/0001-DO-NOT-UPSTREAM-Prototypes-missing-in-Cerbero-s-anci.patch',
+               '../glib/0001-gengiotypefuncs.py-Read-and-parse-files-in-binary-mo.patch',
+              ]
+
+    def prepare(self):
+        if self.config.target_platform != Platform.LINUX:
+            # Disable valgrind code on non-Linux, in the best case it just
+            # gives us compiler errors :)
+            self.append_env('CFLAGS', '-DNVALGRIND=1')
+            self.meson_options.update({'xattr': 'false'})
+        # macOS provides libiconv as a separate library
+        if self.config.target_platform == Platform.DARWIN:
+            self.meson_options.update({'iconv': 'native'})
+        # linux and BSD provide iconv as a part of libc
+        elif self.config.target_platform == Platform.LINUX:
+            self.meson_options.update({'iconv': 'libc'})
+        # Other platforms don't provide libiconv, so we build it
+        else:
+            self.meson_options.update({'iconv': 'gnu'})
+        if self.config.target_platform == Platform.WINDOWS:
+            # Want secure versions of stdlib functions. Glib already defines
+            # _WIN32_WINNT, so undefine it on the cmdline to avoid warnings
+            self.append_env('CFLAGS', '-DMINGW_HAS_SECURE_API=1', '-U_WIN32_WINNT')

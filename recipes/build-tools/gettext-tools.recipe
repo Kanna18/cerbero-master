@@ -1,0 +1,43 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+import shutil
+from pathlib import Path
+
+from cerbero.utils import shell
+
+class Recipe(recipe.Recipe):
+    name = 'gettext-tools'
+    version = '0.19.8.1'
+    licenses = [License.GPLv3]
+    srcdir = 'gettext-tools'
+    stype = SourceType.TARBALL
+    url = 'gnu://gettext/gettext-%(version)s.tar.xz'
+    tarball_dirname = 'gettext-%(version)s'
+    tarball_checksum = '105556dbc5c3fbbc2aa0edb46d22d055748b6f5c7cd7a8d99f8e7eb84e938be4'
+
+    platform_deps = {
+            Platform.DARWIN:  ['sed'],
+            Platform.WINDOWS: ['libiconv', 'mingw-runtime', 'automake'],}
+    configure_options = ' --disable-java --disable-csharp --disable-native-java --without-csv'
+    patches = ['../gettext/0001-Fix-linker-error-redefinition-of-vasprintf.patch',
+               '../gettext/0001-Undefine-__USE_MINGW_ANSI_STDIO-as-otherwise-stdio.h.patch',
+               '../gettext/0001-Fix-build-invalid-instruction-on-macOS-10.13.patch',
+               '../gettext/0001-Fix-linker-error-Cannot-export-rpl_printf.patch' ]
+
+    def prepare(self):
+        if self.config.target_platform == Platform.WINDOWS:
+            self.configure_options += ' --enable-threads=win32'
+            self.append_env('LDFLAGS', '-liconv')
+
+    def post_install(self):
+        if self.config.platform == Platform.WINDOWS:
+            # The msgmerge built by us randomly hangs on Windows when called
+            # during configure, so replace it with the msgmerge from MSYS-MinGW
+            # which works fine.
+            build_tools_bin = Path(self.config.build_tools_prefix) / 'bin'
+            msys_mingw_bindir = Path(shutil.which('mingw-get')).parent
+            msys_msgmerge = msys_mingw_bindir / 'msgmerge.exe'
+            if msys_msgmerge.is_file():
+                if (build_tools_bin / 'msgmerge.exe').is_file():
+                    os.replace(str(build_tools_bin / 'msgmerge.exe'),
+                               str(build_tools_bin / 'msgmerge.exe.bck'))
+                shutil.copy(str(msys_msgmerge), str(build_tools_bin))

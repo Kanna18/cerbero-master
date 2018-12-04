@@ -1,0 +1,19 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+
+class Recipe(recipe.Recipe):
+    name = 'orc-tool'
+    version = '0.4.28'
+    remotes = {'origin': 'https://gitlab.freedesktop.org/gstreamer/orc'}
+    commit = 'origin/master'
+    btype = BuildType.MESON
+    licenses = [License.BSD_like]
+    deps = ['meson']
+    meson_options = {'benchmarks': 'disabled', 'examples': 'disabled',
+                     'gtk_doc': 'disabled', 'tests': 'disabled',
+                     'tools': 'enabled', 'orc-test': 'enabled'}
+
+    files_libs = ['liborc-0.4', 'liborc-test-0.4']
+    files_devel = ['include/orc-0.4', 'lib/pkgconfig/orc-0.4.pc',
+        'bin/orc-bugreport%(bext)s', 'share/aclocal/orc.m4',
+        'bin/orcc%(bext)s']

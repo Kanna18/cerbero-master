@@ -1,0 +1,137 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+from cerbero.build.build import modify_environment
+from cerbero.tools.libtool import LibtoolLibrary
+from cerbero.utils import shell, messages
+from cerbero.errors import FatalError
+
+class Recipe(recipe.Recipe):
+    name = 'openssl'
+    # Note: openssl helpfully moves tarballs somewhere else (old/x.y.z/)
+    # whenever a new release comes out, so make sure to mirror to fdo when
+    # bumping the release!
+    version = '1.1.1'
+    licenses = [License.BSD_like]
+    stype = SourceType.TARBALL
+    url = 'https://ftp.openssl.org/source/{0}-{1}.tar.gz'.format(name, version)
+    tarball_checksum = '2836875a0f89c03d0fdf483941512613a50cfb421d6fd94b9f41d7279d586a3d'
+    deps = ['zlib']
+    # Parallel make fails randomly due to undefined macros, probably races
+    allow_parallel_build = False
+
+    files_bins = ['openssl']
+    files_libs = ['libcrypto', 'libssl']
+    files_devel = ['include/openssl', 'lib/pkgconfig/openssl.pc',
+                   'lib/pkgconfig/libssl.pc', 'lib/pkgconfig/libcrypto.pc']
+
+    def prepare(self):
+        # map platforms
+        if self.config.target_platform == Platform.IOS:
+            if self.config.target_arch == Architecture.ARMv7:
+                self.openssl_platform = 'BSD-generic32'
+            elif self.config.target_arch == Architecture.ARMv7S:
+                self.openssl_platform = 'BSD-generic32'
+            elif self.config.target_arch == Architecture.X86:
+                self.openssl_platform = 'BSD-generic32'
+            elif self.config.target_arch == Architecture.X86_64:
+                self.openssl_platform = 'BSD-generic64'
+            elif self.config.target_arch == Architecture.ARM64:
+                self.openssl_platform = 'BSD-generic64'
+            else:
+                raise NotImplementedError
+        elif self.config.target_platform == Platform.ANDROID:
+            if self.config.target_arch == Architecture.ARM:
+                self.openssl_platform = 'android-arm'
+            elif self.config.target_arch == Architecture.ARMv7:
+                self.openssl_platform = 'android-arm'
+            elif self.config.target_arch == Architecture.ARM64:
+                self.openssl_platform = 'android-arm64'
+            elif self.config.target_arch == Architecture.X86:
+                self.openssl_platform = 'android-x86'
+            elif self.config.target_arch == Architecture.X86_64:
+                self.openssl_platform = 'android-x86_64'
+            else:
+                raise NotImplementedError
+
+            self.make += ' CROSS_SYSROOT="{0}"'.format(self.config.sysroot)
+        elif self.config.target_platform == Platform.DARWIN:
+            if self.config.target_arch == Architecture.X86:
+                self.openssl_platform = 'darwin-i386-cc'
+            elif self.config.target_arch == Architecture.X86_64:
+                self.openssl_platform = 'darwin64-x86_64-cc'
+            else:
+                raise NotImplementedError
+        elif self.config.target_platform == Platform.LINUX:
+            if self.config.target_arch == Architecture.X86:
+                self.openssl_platform = 'linux-elf'
+            elif self.config.target_arch == Architecture.X86_64:
+                self.openssl_platform = 'linux-x86_64'
+            elif self.config.target_arch == Architecture.ARM:
+                self.openssl_platform = 'linux-armv4'
+            elif self.config.target_arch == Architecture.ARMv7:
+                self.openssl_platform = 'linux-armv4'
+            elif self.config.target_arch == Architecture.ARM64:
+                self.openssl_platform = 'linux-aarch64'
+            else:
+                raise NotImplementedError
+        elif self.config.target_platform == Platform.WINDOWS:
+            if self.config.target_arch == Architecture.X86:
+                self.openssl_platform = 'mingw'
+            elif self.config.target_arch == Architecture.X86_64:
+                self.openssl_platform = 'mingw64'
+            else:
+                raise NotImplementedError
+        # NOTE: CFLAG and LDFLAG are not typos!
+        # Need to add CFLAGS to CC because CFLAG is not used everywhere in the
+        # build, and we can't pass arguments via Configure because on Darwin,
+        # Configure reads the `-arch x86_64` as meaning that you want to use
+        # `x86_64` as the platform, and errors out about a redefined platform.
+        self.make += ' AR="$AR" RANLIB="$RANLIB" CC="$CC $CFLAGS" LD="$LD $LDFLAGS" LDFLAG="$LDFLAGS -fPIC" CFLAG="$CFLAGS -fPIC -DOPENSSL_PIC"'
+        self.make_install = 'make install_sw RANLIB="$RANLIB"'
+
+        # We probably don't need and can't use the tools on these platforms
+        if self.config.target_platform in (Platform.IOS, Platform.ANDROID):
+            self.make += ' build_libs openssl.pc libssl.pc libcrypto.pc'
+            self.make_install = 'make install_dev RANLIB="$RANLIB"'
+
+    @modify_environment
+    def configure(self):
+        if self.config.platform == Platform.WINDOWS:
+            # Msys ships with a too-old perl, so we modify PATH to use the
+            # mingw-perl that was downloaded and installed by bootstrap.
+            openssl_path = os.path.join(self.config.mingw_perl_prefix, 'bin')
+            os.environ['PATH'] = openssl_path + ';' + os.environ['PATH']
+            perl, found, newer = shell.check_perl_version('5.10.0')
+            m = 'please run bootstrap again'
+            if newer is None:
+                raise FatalError('Perl not found, ' + m)
+            if newer is False:
+                raise FatalError('Configured Perl {!r} is {} which is too old, {}'
+                                 ''.format(perl, found, m))
+        # OpenSSL guesses the libdir incorrectly on x86_64
+        config_sh = 'perl ./Configure --prefix=' + self.config.prefix + \
+            ' --libdir=lib' + self.config.lib_suffix + '  no-makedepend '
+        if self.config.target_platform == Platform.IOS:
+            config_sh += ' no-shared no-dso '
+        else:
+            config_sh += ' shared '
+
+        # ssl3 is needed by sphinx which is used by gst-validate, which tries
+        # to use this libssl and fails with undefined symbols. md2 is needed by
+        # librpmio.so.8, which is used during package generation on Fedora.
+        if self.config.target_platform == Platform.LINUX:
+            config_sh += ' enable-ssl3 enable-ssl3-method enable-md2 '
+        shell.call(config_sh + self.openssl_platform, self.build_dir)
+
+    def post_install(self):
+        # XXX: Don't forget to update this when the soname is bumped!
+        # We don't build shared libraries on iOS as the build system
+        # of openssl is broken and iOS does not support them anyway.
+        if self.config.target_platform != Platform.IOS:
+            libtool_la = LibtoolLibrary('ssl', 1, 1, 0, self.config.libdir,
+                                        self.config.target_platform,
+                                        deps=['crypto'])
+            libtool_la.save()
+            libtool_la = LibtoolLibrary('crypto', 1, 1, 0, self.config.libdir,
+                                        self.config.target_platform)
+            libtool_la.save()

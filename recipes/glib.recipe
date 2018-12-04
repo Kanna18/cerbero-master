@@ -1,0 +1,242 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+import shutil
+from cerbero.errors import FatalError
+from cerbero.tools.libtool import LibtoolLibrary
+from cerbero.tools.libtool import get_libtool_versions
+
+GLIB_CONFIG_UNVERSAL='''\
+#ifdef __i386__
+#include "i386/glibconfig.h"
+#elif defined(__ppc__)
+#include "ppc/glibconfig.h"
+#elif defined(__x86_64__)
+#include "x86_64/glibconfig.h"
+#elif defined(__arm__)
+#include "arm/glibconfig.h"
+#elif defined(__arm64__)
+#include "arm64/glibconfig.h"
+#else
+#error "Unsupported Architecture"
+#endif
+'''
+
+class Recipe(recipe.Recipe):
+    name = 'glib'
+    version = '2.56.1'
+    stype = SourceType.TARBALL
+    url = 'gnome://'
+    tarball_checksum = '40ef3f44f2c651c7a31aedee44259809b6f03d3d20be44545cd7d177221c0b8d'
+    licenses = [License.LGPLv2Plus]
+    btype = BuildType.MESON
+    meson_options = {'gtk_doc': 'false', 'internal_pcre': 'true', 'libmount': 'false',
+                     'dtrace': 'false'}
+    deps = ['libffi', 'zlib']
+
+    patches = ["glib/0003-Add-support-for-loading-GIO-modules-from-the-distro-.patch",
+               "glib/0004-Allow-for-a-second-distro-GIO-module-path-as-used-on.patch",
+               "glib/0005-Blacklist-the-bamf-GIO-module.patch",
+               "glib/0006-giomodule-do-not-try-to-load-modules-from-gio-module.patch",
+               "glib/0008-Unhide-_g_io_modules_ensure_extension_points_registe.patch",
+               'glib/0009-Implementation-of-Cocoa-event-loop-integration-in-GM.patch',
+               'glib/0013-gmain-Fix-erroneous-if-condition-when-dtrace-is-disa.patch',
+               'glib/0001-DO-NOT-UPSTREAM-Prototypes-missing-in-Cerbero-s-anci.patch',
+               # All these patches are upstream and can be removed on version bump
+               'glib/glib-2.57-meson-backported-fixes.patch',
+               'glib/0001-meson-Add-exception-for-atomic-ops-test-for-Android.patch',
+               'glib/0001-gengiotypefuncs.py-Read-and-parse-files-in-binary-mo.patch',
+               'glib/0001-Use-a-real-test-for-G_HAVE_GNUC_VISIBILITY.patch',
+               'glib/0001-Revert-Revert-Rename-objective-c-files-from-c-to-m.patch',
+               'glib/0002-Revert-Revert-Meson-Fix-cocoa-and-carbon-support.patch',
+               'glib/0003-Fix-missing-osx-files-when-running-make-dist.patch',
+               # https://gitlab.gnome.org/GNOME/glib/merge_requests/280
+               'glib/0001-meson-Always-set-G_MODULE_SUFFIX-to-so-on-macOS.patch',
+               # https://gitlab.gnome.org/GNOME/glib/merge_requests/282
+               'glib/0001-meson-Add-macOS-libtool-versioning-to-maintain-ABI-c.patch',
+               # https://gitlab.gnome.org/GNOME/glib/merge_requests/273
+               'glib/0001-gtlsbackend-add-support-for-setting-the-default-TLS-.patch',
+              ]
+
+    files_libs = [
+        'libglib-2.0', 'libgio-2.0', 'libgmodule-2.0', 'libgobject-2.0',
+        'libgthread-2.0']
+    files_bins = ['gsettings', 'gdbus', 'gio-querymodules', 'glib-compile-schemas']
+    platform_files_schemas = {
+        Platform.WINDOWS: ['share/glib-2.0/schemas'],
+        Platform.DARWIN: ['share/glib-2.0/schemas'],
+        Platform.IOS: ['share/glib-2.0/schemas'],
+    }
+    #FIXME: Fill it when needed
+    #files_gio = ['lib/gio/modules']
+    files_devel = [
+        'bin/glib-gettextize',
+        'bin/glib-mkenums',
+        'bin/glib-compile-resources%(bext)s',
+        'bin/glib-genmarshal',
+        'bin/gresource%(bext)s',
+        'bin/gdbus-codegen',
+        'lib/glib-2.0/include',
+        'lib/pkgconfig/gio-2.0.pc',
+        'lib/pkgconfig/glib-2.0.pc',
+        'lib/pkgconfig/gmodule-2.0.pc',
+        'lib/pkgconfig/gmodule-export-2.0.pc',
+        'lib/pkgconfig/gmodule-no-export-2.0.pc',
+        'lib/pkgconfig/gobject-2.0.pc',
+        'lib/pkgconfig/gthread-2.0.pc',
+        'include/glib-2.0',
+        'share/aclocal/glib-2.0.m4',
+        'share/aclocal/glib-gettext.m4'
+        ]
+    platform_files_devel = {
+        Platform.WINDOWS: ['lib/pkgconfig/gio-windows-2.0.pc', 'include/gio-win32-2.0'],
+        Platform.LINUX: ['lib/pkgconfig/gio-unix-2.0.pc', 'include/gio-unix-2.0'],
+        Platform.ANDROID: ['lib/pkgconfig/gio-unix-2.0.pc', 'include/gio-unix-2.0'],
+        Platform.DARWIN: ['lib/pkgconfig/gio-unix-2.0.pc', 'include/gio-unix-2.0'],
+        Platform.IOS: ['lib/pkgconfig/gio-unix-2.0.pc', 'include/gio-unix-2.0'],
+    }
+
+    files_lang = ['glib20']
+
+    def _set_gio_flags(self, path1=None, path2=None, use_old_uri_scheme=False):
+        self.append_env('CFLAGS', *self._gio_flags(path1, path2, use_old_uri_scheme))
+
+    def _gio_flags(self, path1=None, path2=None, use_old_uri_scheme=False):
+        flags = []
+        def escape(path):
+            return '\\"%s\\"' % path
+        if path1 is not None:
+            flags.append('-DGST_SDK_GLIB_GIO_DISTRO_GIO_MODULE_PATH=' + escape(path1))
+        if path2 is not None:
+            flags.append('-DGST_SDK_GLIB_GIO_DISTRO_GIO_MODULE_PATH2=' + escape(path2))
+        if use_old_uri_scheme:
+            flags.append('-DGST_SDK_GLIB_GIO_OLD_URI_SCHEME_HANDLERS=1')
+        return flags
+
+    def prepare(self):
+        # Glib doesn't support static libraries on Windows yet
+        if self.config.target_platform == Platform.WINDOWS:
+            self.meson_default_library = 'shared'
+
+        if self.config.target_platform != Platform.LINUX:
+            # Disable valgrind code on non-Linux, in the best case it just
+            # gives us compiler errors :)
+            self.append_env('CFLAGS', '-DNVALGRIND=1')
+            self.meson_options.update({'xattr': 'false'})
+            self.deps.append('proxy-libintl')
+
+        # macOS and iOS provide libiconv as a separate library
+        if self.config.target_platform in (Platform.DARWIN, Platform.IOS):
+            self.meson_options.update({'iconv': 'native'})
+        # linux and BSD provide iconv as a part of libc
+        elif self.config.target_platform == Platform.LINUX:
+            self.meson_options.update({'iconv': 'libc'})
+        # On Windows, glib uses an internal copy of libiconv
+        elif self.config.target_platform == Platform.WINDOWS:
+            self.meson_options.update({'iconv': 'native'})
+        # Other platforms don't provide libiconv, so we build it
+        else: 
+            self.deps.append('libiconv')
+            self.meson_options.update({'iconv': 'gnu'})
+
+        if self.config.target_platform == Platform.WINDOWS:
+            # Want secure versions of stdlib functions. Glib already defines
+            # _WIN32_WINNT, so undefine it on the cmdline to avoid warnings
+            self.append_env('CFLAGS', '-DMINGW_HAS_SECURE_API=1', '-U_WIN32_WINNT')
+        elif self.config.target_platform in [Platform.DARWIN, Platform.IOS]:
+            self.files_devel.append(os.path.join('lib', 'glib-2.0', 'include', '*', 'glibconfig.h'))
+            arch = self.config.target_arch
+            if arch == Architecture.X86:
+                arch = 'i386'
+            elif arch == Architecture.ARM64:
+                arch = 'arm64'
+            elif Architecture.is_arm(arch):
+                arch = 'arm'
+            extra_flags = []
+            if self.config.target_platform == Platform.IOS:
+                # Disable mac OS X specifics
+                extra_flags = ['-DGST_SDK_IOS=1']
+                # XXX: Why did we disable these for iOS?
+                #self.configure_options += ' --disable-carbon --disable-modular-tests --disable-cocoa'
+            self.append_env('CFLAGS', *extra_flags)
+
+        elif self.config.target_platform == Platform.LINUX:
+            path1 = '/usr/lib/gio/modules'
+            path2 = None
+            use_old_uri_scheme = False
+            self.meson_options.update({'selinux': 'false'})
+            # Old Debian/Ubuntu
+            if self.config.target_distro_version in [DistroVersion.DEBIAN_SQUEEZE,
+                                                     DistroVersion.UBUNTU_LUCID,
+                                                     DistroVersion.UBUNTU_MAVERICK]:
+                use_old_uri_scheme = True
+            # Ubuntu, cannot check self.config.target_distro here because it's
+            # set to Distro.DEBIAN
+            elif self.config.target_distro_version.startswith('ubuntu_'):
+                if self.config.target_arch == Architecture.X86:
+                    path2 = '/usr/lib/i386-linux-gnu/gio/modules'
+                elif self.config.target_arch == Architecture.X86_64:
+                    path2 = '/usr/lib/x86_64-linux-gnu/gio/modules'
+            # Debian
+            elif self.config.target_distro == Distro.DEBIAN:
+                if self.config.target_arch == Architecture.X86:
+                    path1 = '/usr/lib/i386-linux-gnu/gio/modules'
+                elif self.config.target_arch == Architecture.X86_64:
+                    path1 = '/usr/lib/x86_64-linux-gnu/gio/modules'
+            # RedHat
+            elif self.config.target_distro == Distro.REDHAT:
+                if self.config.target_arch == Architecture.X86_64:
+                    path1 = '/usr/lib64/gio/modules/'
+            # Suse
+            elif self.config.target_distro == Distro.SUSE:
+                if self.config.target_arch == Architecture.X86_64:
+                    path1 = '/usr/lib64/gio/modules/'
+            # Arch
+            elif self.config.target_distro == Distro.ARCH:
+                path1 = '/usr/lib/gio/modules/'
+            # Gentoo
+            elif self.config.target_distro == Distro.GENTOO:
+                path1 = '/usr/lib/gio/modules/'
+            elif self.config.target_distro == Distro.NONE:
+                if self.config.target_distro_version == DistroVersion.NONE_UCLIBC:
+                    self.deps += ('gettext', 'libiconv')
+            else:
+                raise FatalError(_("Add specific for other Linux distributions here"))
+            self._set_gio_flags(path1, path2, use_old_uri_scheme)
+
+    def post_install(self):
+        if self.config.target_platform in [Platform.IOS, Platform.DARWIN]:
+            # For the universal build we need to ship glibconfig.h of both
+            # architectures in a subfolder and include the correct one depending
+            # on the compiler architecture
+            arch = self.config.target_arch
+            if arch == Architecture.X86:
+                arch = 'i386'
+            elif arch == Architecture.ARM64:
+                arch = 'arm64'
+            elif Architecture.is_arm(arch):
+                arch = 'arm'
+
+            arch_dir = os.path.join(self.config.prefix, 'lib', 'glib-2.0',
+                                     'include', arch)
+            if not os.path.exists(arch_dir):
+                os.makedirs(arch_dir)
+            shutil.copyfile(os.path.join(self.meson_dir, 'glib', 'glibconfig.h'),
+                        os.path.join(arch_dir, 'glibconfig.h'))
+            with open(os.path.join(self.config.prefix, 'lib', 'glib-2.0',
+                                   'include', 'glibconfig.h'), 'w+') as f:
+                f.write(GLIB_CONFIG_UNVERSAL)
+        major, minor, micro = get_libtool_versions(self.version)
+        # Meson does not generate la files
+        LibtoolLibrary('glib-2.0', major, minor, micro,
+                self.config.libdir, self.config.target_platform).save()
+        LibtoolLibrary('gobject-2.0', major, minor, micro,
+                self.config.libdir, self.config.target_platform,
+                deps=['glib-2.0', 'ffi']).save()
+        LibtoolLibrary('gmodule-2.0', major, minor, micro,
+                self.config.libdir, self.config.target_platform,
+                deps=['glib-2.0']).save()
+        LibtoolLibrary('gthread-2.0', major, minor, micro,
+                self.config.libdir, self.config.target_platform,
+                deps=['glib-2.0']).save()
+        LibtoolLibrary('gio-2.0', major, minor, micro,
+                self.config.libdir, self.config.target_platform,
+                deps=['gobject-2.0', 'gmodule-2.0', 'z']).save()

@@ -1,0 +1,23 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+
+class Recipe(recipe.Recipe):
+    name = 'libpng'
+    version = '1.6.35'
+    stype = SourceType.TARBALL
+    url = 'sf://'
+    tarball_checksum = '23912ec8c9584917ed9b09c5023465d71709dce089be503c7867fec68a93bcd7'
+    licenses = [License.LibPNG]
+    deps = ['zlib']
+    patches = [name + '/0001-neon-fix-function-export-names-for-iOS-armv7.patch']
+
+    files_libs = ['libpng16']
+    files_devel = ['include/libpng16', 'bin/libpng16-config',
+                   'lib/pkgconfig/libpng16.pc', 'lib/pkgconfig/libpng.pc']
+
+    def prepare(self):
+        if self.config.target_platform == Platform.IOS:
+            if 'GAS' in os.environ:
+                self.set_env('CCAS', os.environ['GAS'], '-no-integrated-as')
+        if self.config.target_arch == Architecture.ARM64:
+            self.configure_options += ' --disable-arm-neon '

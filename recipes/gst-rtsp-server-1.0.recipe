@@ -1,0 +1,15 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+class Recipe(custom.GStreamer):
+    name = 'gst-rtsp-server-1.0'
+    btype = BuildType.MESON
+    meson_options = {'examples': 'disabled', 'gtk_doc': 'disabled'}
+    deps = ['gstreamer-1.0', 'gst-plugins-base-1.0' ]
+
+    files_devel = ['include/gstreamer-1.0/gst/rtsp-server', 'lib/pkgconfig/gstreamer-rtsp-server-1.0.pc']
+    files_libs = ['libgstrtspserver-1.0']
+    files_typelibs = ['GstRtspServer-1.0']
+    files_plugins_net = [ 'lib/gstreamer-1.0/libgstrtspclientsink%(mext)s' ]
+    files_plugins_net_devel = [
+        'lib/gstreamer-1.0/libgstrtspclientsink.a', 'lib/gstreamer-1.0/libgstrtspclientsink.la',
+    ]

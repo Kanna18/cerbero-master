@@ -1,0 +1,27 @@
+ # -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+import shutil
+
+from cerbero.tools.libtool import LibtoolLibrary
+
+class Recipe(recipe.Recipe):
+    version = '2.3.0'
+    name = 'openjpeg'
+    licenses = [License.BSD]
+    stype = SourceType.TARBALL
+    btype = BuildType.CMAKE
+    url = 'https://github.com/uclouvain/openjpeg/archive/v%(version)s.tar.gz'
+    tarball_checksum = '3dc787c1bb6023ba846c2a0d9b1f6e179f1cd255172bde9eb75b01f1e6c7d71a'
+    configure_options = ' -DBUILD_CODEC:bool=off -DBUILD_PKGCONFIG_FILES:bool=on '
+
+    files_libs = ['libopenjp2']
+    files_devel = ['include/openjpeg-2.3/openjpeg.h',
+                   'include/openjpeg-2.3/opj_stdint.h',
+                   'include/openjpeg-2.3/opj_config.h',
+                   'lib/pkgconfig/libopenjp2.pc']
+
+    def post_install(self):
+        deps = ['-lm']
+        libtool_la = LibtoolLibrary('openjp2', 2, 1, None, self.config.libdir,
+                self.config.target_platform, deps)
+        libtool_la.save()

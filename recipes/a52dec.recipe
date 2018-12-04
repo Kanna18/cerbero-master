@@ -1,0 +1,25 @@
+# -*- Mode: Python -*- vi:si:et:sw=4:sts=4:ts=4:syntax=python
+
+class Recipe(recipe.Recipe):
+    name = 'a52dec'
+    version = '0.7.4'
+    stype = SourceType.TARBALL
+    # This URL doesn't support https, so we don't use it
+    #url = 'http://liba52.sourceforge.net/files/a52dec-%(version)s.tar.gz'
+    url = 'https://gstreamer.freedesktop.org/src/mirror/a52dec-%(version)s.tar.gz'
+    tarball_checksum = 'a21d724ab3b3933330194353687df82c475b5dfb997513eef4c25de6c865ec33'
+    licenses = [License.GPLv2Plus]
+    configure_options = '--with-pic --enable-shared'
+    autoreconf = True
+    patches = ['a52dec/0002-Fix-link-cross-compiling-to-x86-in-darwin-platforms.patch',
+               'a52dec/0003-Disable-AC_C_ALWAYS_INLINE.patch',
+               'a52dec/0004-configure-let-us-decide-if-we-really-want-PIC-or-not.patch']
+
+    files_libs = ['liba52']
+    files_bins = ['a52dec']
+    files_devel = ['include/a52dec']
+
+    def prepare(self):
+        if self.config.target_platform == Platform.ANDROID:
+            self.configure_options += ' --disable-oss'
+        self.append_env('CFLAGS', '-fPIC')
